@@ -15,6 +15,14 @@ export class ApiError extends Error {
   }
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object") {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value) as unknown;
+  return prototype === Object.prototype || prototype === null;
+}
+
 function convertBigInts(value: unknown): unknown {
   if (typeof value === "bigint") {
     return Number(value);
@@ -22,7 +30,10 @@ function convertBigInts(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(convertBigInts);
   }
-  if (value !== null && typeof value === "object") {
+  // Recurse into plain objects only. Class instances (Date, Buffer, and the like)
+  // are returned intact so the serializer can handle them; recursing with
+  // Object.entries would flatten a Date to {} and break date-time serialization.
+  if (isPlainObject(value)) {
     const out: Record<string, unknown> = {};
     for (const [key, entry] of Object.entries(value)) {
       out[key] = convertBigInts(entry);

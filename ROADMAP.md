@@ -5,17 +5,14 @@ Forward-looking plan for noCluNetwork. Completed work is recorded in CHANGELOG.m
 ## Status snapshot
 
 - Bootstrapped scaffold (the repo skeleton, the four bibles, the Fastify Core API with a health route, Drizzle and migrations wiring, Zod config, the Redis client on the `ncn:` namespace, the service-auth plugin, OpenAPI, and CI).
+- Data-model foundation shipped (phase 2): the five core tables and the first migration, the platform registry, and the service-token resolve-or-create routes under `/api/v1`, with a DB-backed test harness. See CHANGELOG.md.
 - This is the fresh rebuild of the legacy portalNetwork Core API and bot suite, built from the portalNetwork assessment spec, not ported. The legacy OAuth2 provider, native auth, gambling games, native web chat, the half-built cross-platform bridge, and the five stub adapters are out of scope by decision (see Out of scope below).
 
 ## The rebuild arc
 
-Ordering past phase 2 is provisional and is firmed one phase at a time. Phase numbering starts fresh for the rebuild.
+Phases 1 (bootstrap) and 2 (data-model foundation) have shipped; see the status snapshot and CHANGELOG.md. Ordering past phase 3 is provisional and is firmed one phase at a time. Phase numbering starts fresh for the rebuild and is kept stable, so shipped phases leave the arc but their numbers are not reused.
 
-1. Bootstrap (in progress). The repo, the four bibles, the single Fastify application, the health route and response envelope, Drizzle and the empty migrations setup, Zod-validated config, the Redis client on the `ncn:` namespace, the service-auth plugin, the OpenAPI spec, and the CI gate.
-
-2. Data-model foundation. The kept schema: a platform-account link table keyed to noclulabs identities, communities, and membership. The error class and any envelope work not already in bootstrap, plus the resolve routes (resolve user by platform id, resolve community by platform group id).
-
-3. Identity resolution and the ghost model. Auto-create-from-platform-activity resolution, and ghost-account claim-and-merge, re-pointed at noclulabs identities. The `USER_HAS_DATA` claim guard.
+3. Verification-driven claim-and-merge. Attach a verified ghost to its noclulabs identity (set the participant's noclulabs_identity_id and flip the platform account to verified), and merge two participants when a person verifies a second platform, with the `USER_HAS_DATA` claim guard. Auto-create-from-platform-activity resolution moved into phase 2 with the schema (the resolve-or-create routes), so phase 3 is purely the verification-and-merge step.
 
 4. Community engagement core. Per-community XP and the network-level progression curve, message-activity ingestion and antispam, moderation and cases, and member join and leave events carrying account age and platform. This is the engine that produces signals.
 

@@ -6,6 +6,8 @@ import { registerErrorHandler } from "@/plugins/error-handler.js";
 import { registerServiceAuth } from "@/plugins/service-auth.js";
 import { registerSwagger } from "@/plugins/swagger.js";
 import { registerHealthRoute } from "@/routes/health.js";
+import { registerParticipantRoutes } from "@/routes/participants.js";
+import { registerCommunityRoutes } from "@/routes/communities.js";
 import { closeDb } from "@/lib/db/index.js";
 import { closeRedis } from "@/lib/redis/index.js";
 
@@ -43,6 +45,9 @@ export async function buildApp(): Promise<FastifyInstance> {
         ? true
         : config.CORS_ORIGIN.split(",").map((origin) => origin.trim()),
   });
+  // A global limiter guards any future public-facing route. The only clients
+  // today are trusted service-token bots, so the liveness probe and the resolve
+  // routes opt out per route (config.rateLimit false); see their definitions.
   await app.register(rateLimit, { max: 200, timeWindow: "1 minute" });
 
   // Swagger hooks onRoute, so it registers before any route is added.
@@ -51,6 +56,16 @@ export async function buildApp(): Promise<FastifyInstance> {
   registerServiceAuth(app);
 
   registerHealthRoute(app);
+
+  // The bot-facing domain API. Versioned so noCluBot's generated client targets a
+  // stable prefix; infra endpoints like /health stay at the root.
+  await app.register(
+    async (api) => {
+      registerParticipantRoutes(api);
+      registerCommunityRoutes(api);
+    },
+    { prefix: "/api/v1" },
+  );
 
   return app;
 }

@@ -69,18 +69,34 @@ After bootstrap. Run `git ls-files` for the full tree.
 
 ```
 src/
-  index.ts          # runtime entry point (invokes start)
-  server.ts         # Fastify app factory and the start routine
-  config.ts         # Zod-validated environment config
-  plugins/          # Fastify plugins (service auth, error handler, swagger)
-  routes/           # thin route handlers, one area per directory
-  services/         # domain logic, one area per directory
+  index.ts                  # runtime entry point (invokes start)
+  server.ts                 # Fastify app factory, the /api/v1 mount, and the start routine
+  config.ts                 # Zod-validated config (with the production DATABASE_URL guard)
+  plugins/                  # Fastify plugins (service auth, error handler, swagger)
+  routes/
+    health.ts               # liveness probe (rate-limit exempt)
+    participants.ts         # POST /api/v1/participants/resolve
+    communities.ts          # POST /api/v1/communities/resolve
+    parse.ts                # Zod body parse into a 400 ApiError
+  services/
+    participants/resolve.ts # resolve-or-create a participant
+    communities/resolve.ts  # resolve-or-create a community
   lib/
-    db/             # Drizzle schema and the connection module
-    redis/          # ioredis client on the single ncn: namespace
-    registry/       # registry-as-canonical sources (signal types, and so on)
-  types/            # shared types and the response envelope
-drizzle/migrations/ # append-only migration files
+    db/
+      index.ts              # the pg pool and the Drizzle connection
+      helpers.ts            # requireRow and the unique-violation guard
+      schema/               # one file per table, re-exported from index.ts
+    redis/                  # ioredis client on the single ncn: namespace
+    registry/
+      platforms.ts          # the platform registry (canonical valid platforms)
+  types/                    # shared types and the response envelope
+drizzle/migrations/         # append-only migrations (0000 is the foundational migration)
+test/
+  constants.ts              # shared test env defaults (database, Redis, service token)
+  global-setup.ts           # creates the test database and applies migrations once
+  helpers/db.ts             # truncate-between-tests isolation
+  config.test.ts            # the production DATABASE_URL guard
+  db/data-model.test.ts     # DB-backed migration and resolve-route tests
 Dockerfile
 docker-compose.yml
 docker-compose.dev.yml

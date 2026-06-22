@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+import { TEST_DATABASE_URL, TEST_REDIS_URL, TEST_SERVICE_TOKEN } from "./test/constants";
 
 export default defineConfig({
   resolve: {
@@ -16,11 +17,16 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["test/**/*.test.ts", "src/**/*.test.ts"],
+    // Ensures the test database exists and applies the migrations once before the
+    // suite. DB-backed tests then truncate between cases for isolation.
+    globalSetup: ["./test/global-setup.ts"],
     env: {
       NODE_ENV: "test",
-      DATABASE_URL: "postgres://test:test@localhost:5433/noclunetwork_test?uselibpqcompat=true",
-      REDIS_URL: "redis://localhost:6379",
-      SERVICE_TOKEN: "test-service-token",
+      // The shell or CI may override the connection (the global setup and the
+      // workers both read these); the fallbacks point at docker-compose.dev.
+      DATABASE_URL: process.env.DATABASE_URL ?? TEST_DATABASE_URL,
+      REDIS_URL: process.env.REDIS_URL ?? TEST_REDIS_URL,
+      SERVICE_TOKEN: TEST_SERVICE_TOKEN,
     },
   },
 });
