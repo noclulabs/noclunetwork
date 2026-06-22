@@ -21,16 +21,21 @@ interface OwnedRelation {
 }
 
 // The single source of truth for a merge. Both the relocation step and the
-// USER_HAS_DATA guard iterate this one list, so they can never drift apart: a
-// relation that is relocated is always also guarded, and a relation that is
-// guarded is always also relocated.
+// USER_HAS_DATA guard iterate this one list, so for every LISTED relation they
+// stay in lockstep: a relation that is relocated is always also guarded, and one
+// that is guarded is always also relocated. The guard therefore catches an
+// incomplete relocation of a listed relation. It does NOT, by itself, catch a
+// participant-owned table that was never added to this list: a participant_id
+// foreign key with ON DELETE CASCADE would silently drop such rows when a ghost
+// is deleted. Guarding against that omission is a discipline, enforced by the
+// do-not-touch rule below and in CLAUDE.md, not by this code.
 //
 // PHASE 4 EXTENSION (required): when community memberships and per-community XP
 // land, add their tables here (community_members, then the XP and leveling
-// tables). Adding an entry extends BOTH the relocation and the guard at once.
-// Never add a relation to the relocation without also guarding it (or a merge
-// could delete a participant that still owns rows), which is exactly what keeping
-// them in this one list prevents. See the USER_HAS_DATA invariant in CLAUDE.md.
+// tables). community_members already has a participant_id ON DELETE CASCADE, so
+// it MUST be added the moment it gains a write path, or a merge will silently
+// drop a survivor's would-be memberships. Adding an entry extends BOTH the
+// relocation and the guard at once. See the USER_HAS_DATA invariant in CLAUDE.md.
 export const PARTICIPANT_OWNED_RELATIONS: readonly OwnedRelation[] = [
   {
     name: "platform_accounts",

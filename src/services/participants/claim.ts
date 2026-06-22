@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/lib/db/index.js";
-import { isUniqueViolation, requireRow } from "@/lib/db/helpers.js";
+import { isRetryableTransactionError, isUniqueViolation, requireRow } from "@/lib/db/helpers.js";
 import { participants, platformAccounts } from "@/lib/db/schema/index.js";
 import { ApiError } from "@/plugins/error-handler.js";
 import type { Platform } from "@/lib/registry/platforms.js";
@@ -35,9 +35,10 @@ type ParticipantRow = typeof participants.$inferSelect;
 // A claim-in-place can lose a race for the identity to a concurrent claim of a
 // different platform account (the participants.noclulabs_identity_id unique
 // constraint). On that unique violation we re-run: the loser now sees the
-// identity held by another participant and takes the merge path instead. Two
-// attempts always suffice (a merge never inserts the identity), but a small bound
-// is kept as a safety net.
+// identity held by another participant and takes the merge path instead. We also
+// re-run on a transient serialization failure or deadlock (see the locking note
+// in runClaim). Two attempts always suffice for the unique-violation case (a
+// merge never inserts the identity); the small bound also absorbs transient retries.
 const MAX_CLAIM_ATTEMPTS = 3;
 
 function shape(participant: ParticipantRow, outcome: ClaimOutcome): ClaimResult {
@@ -109,11 +110,15 @@ async function runClaim(
       .limit(1)
   )[0];
 
-  // Lock P (the account's participant) and S (the holder), together, in
-  // ascending id order, so concurrent claims acquire participant locks in a
-  // consistent order (deadlock-free). The account lock above is the real
-  // serializer for same-key claims; this lock keeps cross-key merges into the
-  // same survivor orderly and gives the guard a consistent read.
+  // Lock P (the account's participant) and S (the holder) together, requesting
+  // them in ascending id order. The account row lock above is the true serializer
+  // for same-key claims (the only real contention); this participant lock is
+  // defense in depth for cross-key merges into the same survivor and gives the
+  // guard a consistent read. Postgres does not strictly guarantee lock-acquisition
+  // order under ORDER BY plus FOR UPDATE, so a deadlock is not impossible in
+  // theory (it is, in practice, since merges share at most the single survivor
+  // row); if one ever occurs it rolls back and the caller retries it as a
+  // transient error rather than returning a 500.
   const idsToLock = Array.from(
     new Set([account.participantId, holder?.id].filter((id): id is string => id !== undefined)),
   ).sort();
@@ -200,8 +205,11 @@ export async function claimParticipant(input: ClaimParticipantInput): Promise<Cl
     } catch (error) {
       // A lost race for the identity (a concurrent claim-in-place of a different
       // account took it) surfaces as a unique violation; re-run so the loser
-      // takes the merge path. Any other error, or an exhausted budget, propagates.
-      if (isUniqueViolation(error) && attempt < MAX_CLAIM_ATTEMPTS - 1) {
+      // takes the merge path. A transient serialization failure or deadlock is
+      // also safe to re-run (the transaction already rolled back). Any other
+      // error, or an exhausted budget, propagates.
+      const retryable = isUniqueViolation(error) || isRetryableTransactionError(error);
+      if (retryable && attempt < MAX_CLAIM_ATTEMPTS - 1) {
         continue;
       }
       throw error;
