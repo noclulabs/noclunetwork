@@ -8,6 +8,7 @@ import { registerSwagger } from "@/plugins/swagger.js";
 import { registerHealthRoute } from "@/routes/health.js";
 import { registerParticipantRoutes } from "@/routes/participants.js";
 import { registerCommunityRoutes } from "@/routes/communities.js";
+import { registerMembershipRoutes } from "@/routes/memberships.js";
 import { closeDb } from "@/lib/db/index.js";
 import { closeRedis } from "@/lib/redis/index.js";
 
@@ -63,6 +64,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     async (api) => {
       registerParticipantRoutes(api);
       registerCommunityRoutes(api);
+      registerMembershipRoutes(api);
     },
     { prefix: "/api/v1" },
   );

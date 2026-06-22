@@ -1,6 +1,6 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { platformAccounts } from "@/lib/db/schema/index.js";
+import { communityMembers, platformAccounts } from "@/lib/db/schema/index.js";
 import { ApiError } from "@/plugins/error-handler.js";
 
 // The transaction handle drizzle passes to db.transaction(callback). Extracted
@@ -20,6 +20,19 @@ interface OwnedRelation {
   countOwned(tx: DbTransaction, participantId: string): Promise<number>;
 }
 
+// The later of two nullable timestamps, used when combining two inactive
+// memberships: the survivor's left_at becomes whichever leave happened last. A
+// null stands for "unknown", so the other value wins; two nulls stay null.
+function laterTimestamp(a: Date | null, b: Date | null): Date | null {
+  if (a === null) {
+    return b;
+  }
+  if (b === null) {
+    return a;
+  }
+  return a.getTime() >= b.getTime() ? a : b;
+}
+
 // The single source of truth for a merge. Both the relocation step and the
 // USER_HAS_DATA guard iterate this one list, so for every LISTED relation they
 // stay in lockstep: a relation that is relocated is always also guarded, and one
@@ -28,14 +41,15 @@ interface OwnedRelation {
 // participant-owned table that was never added to this list: a participant_id
 // foreign key with ON DELETE CASCADE would silently drop such rows when a ghost
 // is deleted. Guarding against that omission is a discipline, enforced by the
-// do-not-touch rule below and in CLAUDE.md, not by this code.
+// do-not-touch rule in CLAUDE.md and by the catalog assertion in the tests (which
+// fails loud if a participant_id foreign-key table is missing from this list),
+// not by this code at runtime.
 //
-// PHASE 4 EXTENSION (required): when community memberships and per-community XP
-// land, add their tables here (community_members, then the XP and leveling
-// tables). community_members already has a participant_id ON DELETE CASCADE, so
-// it MUST be added the moment it gains a write path, or a merge will silently
-// drop a survivor's would-be memberships. Adding an entry extends BOTH the
-// relocation and the guard at once. See the USER_HAS_DATA invariant in CLAUDE.md.
+// PHASE 4 EXTENSION: per-community XP and leveling (phase 4b) add their own
+// participant-owned tables. Each MUST be added here the moment it gains a
+// participant_id ON DELETE CASCADE, or a merge will silently drop a survivor's
+// would-be rows. Adding an entry extends BOTH the relocation and the guard at
+// once. See the USER_HAS_DATA invariant in CLAUDE.md.
 export const PARTICIPANT_OWNED_RELATIONS: readonly OwnedRelation[] = [
   {
     name: "platform_accounts",
@@ -52,6 +66,68 @@ export const PARTICIPANT_OWNED_RELATIONS: readonly OwnedRelation[] = [
         .select({ count: sql<number>`count(*)::int` })
         .from(platformAccounts)
         .where(eq(platformAccounts.participantId, participantId));
+      return rows[0]?.count ?? 0;
+    },
+  },
+  {
+    name: "community_members",
+    // Memberships cannot always re-point: the ghost and the survivor can each be
+    // a member of the same community (a community that spans two platforms, with
+    // the person active on both), and the unique (community_id, participant_id)
+    // forbids two rows for the survivor in one community. So re-point where the
+    // survivor is not yet a member, and combine where it is.
+    async relocate(tx, fromParticipantId, toParticipantId) {
+      const ghostMemberships = await tx
+        .select()
+        .from(communityMembers)
+        .where(eq(communityMembers.participantId, fromParticipantId));
+
+      for (const ghost of ghostMemberships) {
+        const survivor = (
+          await tx
+            .select()
+            .from(communityMembers)
+            .where(
+              and(
+                eq(communityMembers.communityId, ghost.communityId),
+                eq(communityMembers.participantId, toParticipantId),
+              ),
+            )
+            .limit(1)
+        )[0];
+
+        if (survivor === undefined) {
+          // No collision: re-point, preserving the row's created_at,
+          // permission_level, active, and left_at. Each ghost membership is for a
+          // distinct community (the unique key), so re-pointing one never creates
+          // a collision for another in this loop.
+          await tx
+            .update(communityMembers)
+            .set({ participantId: toParticipantId })
+            .where(eq(communityMembers.id, ghost.id));
+          continue;
+        }
+
+        // Collision: combine into the survivor's row, then drop the ghost's.
+        // permission_level is the higher of the two; active is true if either is
+        // active; left_at is null when the combined membership is active, else the
+        // later of the two left_at values. The survivor's created_at is unchanged
+        // (it is not in the set).
+        const active = survivor.active || ghost.active;
+        const permissionLevel = Math.max(survivor.permissionLevel, ghost.permissionLevel);
+        const leftAt = active ? null : laterTimestamp(survivor.leftAt, ghost.leftAt);
+        await tx
+          .update(communityMembers)
+          .set({ active, permissionLevel, leftAt })
+          .where(eq(communityMembers.id, survivor.id));
+        await tx.delete(communityMembers).where(eq(communityMembers.id, ghost.id));
+      }
+    },
+    async countOwned(tx, participantId) {
+      const rows = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(communityMembers)
+        .where(eq(communityMembers.participantId, participantId));
       return rows[0]?.count ?? 0;
     },
   },

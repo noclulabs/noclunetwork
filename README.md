@@ -77,13 +77,15 @@ src/
     health.ts               # liveness probe (rate-limit exempt)
     participants.ts         # POST /api/v1/participants/resolve and /claim
     communities.ts          # POST /api/v1/communities/resolve
+    memberships.ts          # POST /api/v1/memberships/ensure and /leave
     parse.ts                # Zod body parse into a 400 ApiError
   services/
     participants/
       resolve.ts            # resolve-or-create a participant
       claim.ts              # verification-driven claim-and-merge
-      owned-relations.ts    # participant-owned relations (merge relocation and the USER_HAS_DATA guard)
+      owned-relations.ts    # participant-owned relations (platform_accounts, community_members): merge relocation and the USER_HAS_DATA guard
     communities/resolve.ts  # resolve-or-create a community
+    memberships/lifecycle.ts # ensure-membership and leave (soft leave with rejoin)
   lib/
     db/
       index.ts              # the pg pool and the Drizzle connection
@@ -93,13 +95,16 @@ src/
     registry/
       platforms.ts          # the platform registry (canonical valid platforms)
   types/                    # shared types and the response envelope
-drizzle/migrations/         # append-only migrations (0000 is the foundational migration)
+drizzle/migrations/         # append-only migrations (0000 foundational, 0001 the membership active and left_at columns)
 test/
   constants.ts              # shared test env defaults (database, Redis, service token)
   global-setup.ts           # creates the test database and applies migrations once
   helpers/db.ts             # truncate-between-tests isolation
   config.test.ts            # the production DATABASE_URL guard
   db/data-model.test.ts     # DB-backed migration and resolve-route tests
+  db/claim-and-merge.test.ts # claim-and-merge cases, USER_HAS_DATA, concurrency
+  db/membership-lifecycle.test.ts # ensure, leave, rejoin, the merge relocation, concurrency
+  db/owned-relations-catalog.test.ts # asserts every participant_id foreign-key table is registered
 Dockerfile
 docker-compose.yml
 docker-compose.dev.yml
