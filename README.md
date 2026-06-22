@@ -40,8 +40,8 @@ It is a relying party of noclulabs.com, the noClu estate's auth issuer and ident
 ### Setup
 
 ```bash
-git clone https://github.com/noclulabs/noCluNetwork.git
-cd noCluNetwork
+git clone https://github.com/noclulabs/noclunetwork.git
+cd noclunetwork
 pnpm install
 cp .env.example .env
 docker compose -f docker-compose.dev.yml up -d
@@ -69,7 +69,8 @@ After bootstrap. Run `git ls-files` for the full tree.
 
 ```
 src/
-  server.ts         # Fastify app factory and startup
+  index.ts          # runtime entry point (invokes start)
+  server.ts         # Fastify app factory and the start routine
   config.ts         # Zod-validated environment config
   plugins/          # Fastify plugins (service auth, error handler, swagger)
   routes/           # thin route handlers, one area per directory

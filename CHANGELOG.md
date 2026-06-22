@@ -14,5 +14,7 @@ All notable changes to noCluNetwork are recorded here, in Keep a Changelog forma
 - The service-auth plugin (`X-Service-Token` plus `X-Service-Name`) for bot-facing routes.
 - The OpenAPI spec via `@fastify/swagger` (the contract noCluBot's typed client is generated from).
 - The CI gate (GitHub Actions): lint, type-check, test, and build, with Postgres and Redis services.
+- Docker: a multi-stage `Dockerfile` (non-root runtime on Node 22), `docker-compose.dev.yml` (local Postgres 18 and Redis 7), and `docker-compose.yml` (the production API on host port 3000).
+- Vitest tests covering `GET /health` and the service-auth plugin (missing, wrong, and correct token).
 
-[Unreleased]: https://github.com/noclulabs/noCluNetwork/commits/main
+[Unreleased]: https://github.com/noclulabs/noclunetwork/commits/main
