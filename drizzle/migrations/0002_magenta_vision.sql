@@ -1,0 +1,1 @@
+ALTER TABLE "participants" ADD COLUMN "network_xp" bigint DEFAULT 0 NOT NULL;

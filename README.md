@@ -78,24 +78,27 @@ src/
     participants.ts         # POST /api/v1/participants/resolve and /claim
     communities.ts          # POST /api/v1/communities/resolve
     memberships.ts          # POST /api/v1/memberships/ensure and /leave
+    engagement.ts           # POST /api/v1/engagement (accrue network XP)
     parse.ts                # Zod body parse into a 400 ApiError
   services/
     participants/
       resolve.ts            # resolve-or-create a participant
-      claim.ts              # verification-driven claim-and-merge
+      claim.ts              # verification-driven claim-and-merge (sums network_xp on merge)
       owned-relations.ts    # participant-owned relations (platform_accounts, community_members): merge relocation and the USER_HAS_DATA guard
     communities/resolve.ts  # resolve-or-create a community
     memberships/lifecycle.ts # ensure-membership and leave (soft leave with rejoin)
+    engagement/grant.ts     # record an engagement: cooldown-gated network XP grant
   lib/
     db/
       index.ts              # the pg pool and the Drizzle connection
       helpers.ts            # requireRow and the unique-violation guard
       schema/               # one file per table, re-exported from index.ts
-    redis/                  # ioredis client on the single ncn: namespace
+    leveling/               # the polynomial XP-to-level curve and the capped contribution (pure)
+    redis/                  # ioredis client on the single ncn: namespace (the engagement cooldown)
     registry/
       platforms.ts          # the platform registry (canonical valid platforms)
   types/                    # shared types and the response envelope
-drizzle/migrations/         # append-only migrations (0000 foundational, 0001 the membership active and left_at columns)
+drizzle/migrations/         # append-only migrations (0000 foundational, 0001 the membership active and left_at columns, 0002 the participant network_xp column)
 test/
   constants.ts              # shared test env defaults (database, Redis, service token)
   global-setup.ts           # creates the test database and applies migrations once
@@ -105,6 +108,8 @@ test/
   db/claim-and-merge.test.ts # claim-and-merge cases, USER_HAS_DATA, concurrency
   db/membership-lifecycle.test.ts # ensure, leave, rejoin, the merge relocation, concurrency
   db/owned-relations-catalog.test.ts # asserts every participant_id foreign-key table is registered
+  db/engagement.test.ts     # engagement grant, the per-community cooldown, cross-community, concurrency
+  leveling.test.ts          # the pure curve and contribution functions (unit, no DB)
 Dockerfile
 docker-compose.yml
 docker-compose.dev.yml

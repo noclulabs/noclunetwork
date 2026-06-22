@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/index.js";
 import { isRetryableTransactionError, isUniqueViolation, requireRow } from "@/lib/db/helpers.js";
 import { participants, platformAccounts } from "@/lib/db/schema/index.js";
@@ -161,6 +161,19 @@ async function runClaim(
   // always the identity-bearer.
   if (s !== undefined) {
     await relocateOwnedRows(tx, p.id, s.id);
+    // Fold the ghost's lifetime network XP into the survivor's running total with
+    // a single atomic increment. network_xp is a participant-level scalar (a column
+    // on the entity being merged), not an owned child relation, so it is summed
+    // here rather than in the owned-relations list, and the guard below does not
+    // cover it. Guard the zero case so a ghost with no XP does not bump the
+    // survivor's updated_at (mirrors markVerified). The survivor's derived level
+    // reflects the combined total at the next read.
+    if (p.networkXp > 0) {
+      await tx
+        .update(participants)
+        .set({ networkXp: sql`${participants.networkXp} + ${p.networkXp}` })
+        .where(eq(participants.id, s.id));
+    }
     await markVerified(tx, account.id, account.verified);
     await assertParticipantOwnsNothing(tx, p.id);
     await tx.delete(participants).where(eq(participants.id, p.id));

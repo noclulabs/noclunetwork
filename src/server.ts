@@ -9,6 +9,7 @@ import { registerHealthRoute } from "@/routes/health.js";
 import { registerParticipantRoutes } from "@/routes/participants.js";
 import { registerCommunityRoutes } from "@/routes/communities.js";
 import { registerMembershipRoutes } from "@/routes/memberships.js";
+import { registerEngagementRoutes } from "@/routes/engagement.js";
 import { closeDb } from "@/lib/db/index.js";
 import { closeRedis } from "@/lib/redis/index.js";
 
@@ -65,6 +66,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       registerParticipantRoutes(api);
       registerCommunityRoutes(api);
       registerMembershipRoutes(api);
+      registerEngagementRoutes(api);
     },
     { prefix: "/api/v1" },
   );
