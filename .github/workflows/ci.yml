@@ -38,6 +38,8 @@ jobs:
       NODE_ENV: test
       DATABASE_URL: postgres://noclu:noclu@localhost:5433/noclunetwork_test?uselibpqcompat=true
       REDIS_URL: redis://localhost:6379
+      # vitest.config pins SERVICE_TOKEN for the test run, so this value is a
+      # placeholder kept for parity with the app's runtime environment.
       SERVICE_TOKEN: ci-service-token
 
     steps:

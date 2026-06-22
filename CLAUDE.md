@@ -107,7 +107,7 @@ Every executor prompt begins by reading the bibles and ends with a "Bible file u
 
 ## Current state
 
-Bootstrapped scaffold: the Fastify Core API with a `GET /health` route and the response envelope, Drizzle wired with an empty migrations setup, Zod-validated config, the Redis client on the `ncn:` namespace, the service-auth plugin, the OpenAPI spec, and the CI gate. No domain logic yet. ROADMAP.md is authoritative for phase status and the planned arc; CHANGELOG.md holds the history.
+The data-model foundation exists on top of the bootstrap. Five tables (participants, platform_accounts, communities, community_platforms, community_members) live in `src/lib/db/schema`, one file per table, established by the first migration (`drizzle/migrations/0000_*`), which is hand-edited to prepend the citext and pgcrypto extensions and the set_updated_at trigger and to add a per-table trigger. Ids default to the native Postgres 18 uuidv7(). participants is the spine: its `noclulabs_identity_id` is nullable-unique with no foreign key, and null means a ghost (auto-created from platform activity, not yet verified; nothing is linked or verified in this phase). The platform registry (`src/lib/registry/platforms.ts`) is the canonical, app-layer set of valid platforms (discord), projected into the route schemas. Two service-token resolve-or-create routes (`POST /api/v1/participants/resolve`, `POST /api/v1/communities/resolve`) are idempotent and race-safe, thin wrappers over services in `src/services`. community_members is defined but intentionally unpopulated until the membership lifecycle (phase 4). ROADMAP.md is authoritative for phase status; CHANGELOG.md holds the history.
 
 ## Gotchas and do-not-touch
 

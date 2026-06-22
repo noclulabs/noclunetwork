@@ -7,6 +7,8 @@ export function registerHealthRoute(app: FastifyInstance): void {
   app.get(
     "/health",
     {
+      // Liveness probes must never be throttled by the global rate limiter.
+      config: { rateLimit: false },
       schema: {
         tags: ["system"],
         summary: "Liveness probe",
