@@ -17,6 +17,12 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["test/**/*.test.ts", "src/**/*.test.ts"],
+    // The DB-backed tests share one test database and isolate by truncating
+    // between cases (see test/helpers/db.ts). Within a file vitest runs cases
+    // serially, but files run in parallel by default, which would let two
+    // DB-backed files truncate and write the same database concurrently. Run
+    // files serially so the shared database stays consistent.
+    fileParallelism: false,
     // Ensures the test database exists and applies the migrations once before the
     // suite. DB-backed tests then truncate between cases for isolation.
     globalSetup: ["./test/global-setup.ts"],
