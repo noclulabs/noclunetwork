@@ -1,0 +1,25 @@
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: noclu
+      POSTGRES_PASSWORD: noclu
+      POSTGRES_DB: noclunetwork
+    ports:
+      # Host port 5433 to avoid clashing with a local Postgres on 5432.
+      - "5433:5432"
+    volumes:
+      - noclunetwork_pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - noclunetwork_redisdata:/data
+
+volumes:
+  noclunetwork_pgdata:
+  noclunetwork_redisdata:
