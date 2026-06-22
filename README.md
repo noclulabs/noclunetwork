@@ -79,15 +79,19 @@ src/
     communities.ts          # POST /api/v1/communities/resolve
     memberships.ts          # POST /api/v1/memberships/ensure and /leave
     engagement.ts           # POST /api/v1/engagement (accrue network XP)
+    moderation.ts           # POST /api/v1/moderation/actions, GET /moderation/state and /history
     parse.ts                # Zod body parse into a 400 ApiError
   services/
     participants/
       resolve.ts            # resolve-or-create a participant
       claim.ts              # verification-driven claim-and-merge (sums network_xp on merge)
-      owned-relations.ts    # participant-owned relations (platform_accounts, community_members): merge relocation and the USER_HAS_DATA guard
+      owned-relations.ts    # participant-owned relations (platform_accounts, community_members, moderation_actions): merge relocation and the USER_HAS_DATA guard
     communities/resolve.ts  # resolve-or-create a community
-    memberships/lifecycle.ts # ensure-membership and leave (soft leave with rejoin)
+    memberships/lifecycle.ts # ensure-membership, leave, and the shared soft-leave (rejoin on ensure)
     engagement/grant.ts     # record an engagement: cooldown-gated network XP grant
+    moderation/
+      actions.ts            # record a moderation action and apply its membership effect
+      sanction-state.ts     # the derived-at-read sanction state and the two reads
   lib/
     db/
       index.ts              # the pg pool and the Drizzle connection
@@ -97,8 +101,9 @@ src/
     redis/                  # ioredis client on the single ncn: namespace (the engagement cooldown)
     registry/
       platforms.ts          # the platform registry (canonical valid platforms)
+      moderation-actions.ts # the moderation action registry (canonical valid actions)
   types/                    # shared types and the response envelope
-drizzle/migrations/         # append-only migrations (0000 foundational, 0001 the membership active and left_at columns, 0002 the participant network_xp column)
+drizzle/migrations/         # append-only migrations (0000 foundational, 0001 membership active and left_at, 0002 participant network_xp, 0003 the moderation_actions table)
 test/
   constants.ts              # shared test env defaults (database, Redis, service token)
   global-setup.ts           # creates the test database and applies migrations once
@@ -109,6 +114,7 @@ test/
   db/membership-lifecycle.test.ts # ensure, leave, rejoin, the merge relocation, concurrency
   db/owned-relations-catalog.test.ts # asserts every participant_id foreign-key table is registered
   db/engagement.test.ts     # engagement grant, the per-community cooldown, cross-community, concurrency
+  db/moderation.test.ts     # moderation actions and effects, derived sanction state, the reads, the two-key merge
   leveling.test.ts          # the pure curve and contribution functions (unit, no DB)
 Dockerfile
 docker-compose.yml

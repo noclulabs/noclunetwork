@@ -1,6 +1,6 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { communityMembers, platformAccounts } from "@/lib/db/schema/index.js";
+import { communityMembers, moderationActions, platformAccounts } from "@/lib/db/schema/index.js";
 import { ApiError } from "@/plugins/error-handler.js";
 
 // The transaction handle drizzle passes to db.transaction(callback). Extracted
@@ -9,13 +9,22 @@ import { ApiError } from "@/plugins/error-handler.js";
 // claim-and-merge.
 export type DbTransaction = Parameters<Parameters<NodePgDatabase["transaction"]>[0]>[0];
 
-// A participant-owned relation: a table whose rows belong to exactly one
-// participant. Each entry knows how to relocate its rows to a survivor and how to
-// count the rows a participant still owns. Encapsulating each concrete table
-// behind these two methods keeps the list strongly typed (no heterogeneous-table
-// union, no any).
+// A participant-owned relation: a table whose rows belong to a participant
+// through one or more participant_id foreign keys. Each entry knows how to
+// relocate its rows to a survivor and how to count the rows a participant still
+// owns. Encapsulating each concrete table behind these methods keeps the list
+// strongly typed (no heterogeneous-table union, no any).
+//
+// participantColumns names every foreign-key column on the table that references
+// participants. Most tables have one (participant_id); moderation_actions has two
+// (actor_participant_id and target_participant_id). The catalog assertion
+// cross-checks this list against the Postgres catalog, so a table whose set of
+// participant foreign keys ever drifts from what is declared (a new column, or a
+// second column left out of the relocation) fails loud rather than silently
+// dropping rows on a merge. relocate must move every column named here.
 interface OwnedRelation {
   readonly name: string;
+  readonly participantColumns: readonly string[];
   relocate(tx: DbTransaction, fromParticipantId: string, toParticipantId: string): Promise<void>;
   countOwned(tx: DbTransaction, participantId: string): Promise<number>;
 }
@@ -53,6 +62,7 @@ function laterTimestamp(a: Date | null, b: Date | null): Date | null {
 export const PARTICIPANT_OWNED_RELATIONS: readonly OwnedRelation[] = [
   {
     name: "platform_accounts",
+    participantColumns: ["participant_id"],
     async relocate(tx, fromParticipantId, toParticipantId) {
       // (platform, platform_user_id) is globally unique, so a single account
       // exists per key and re-pointing can never collide on the survivor.
@@ -71,6 +81,7 @@ export const PARTICIPANT_OWNED_RELATIONS: readonly OwnedRelation[] = [
   },
   {
     name: "community_members",
+    participantColumns: ["participant_id"],
     // Memberships cannot always re-point: the ghost and the survivor can each be
     // a member of the same community (a community that spans two platforms, with
     // the person active on both), and the unique (community_id, participant_id)
@@ -128,6 +139,41 @@ export const PARTICIPANT_OWNED_RELATIONS: readonly OwnedRelation[] = [
         .select({ count: sql<number>`count(*)::int` })
         .from(communityMembers)
         .where(eq(communityMembers.participantId, participantId));
+      return rows[0]?.count ?? 0;
+    },
+  },
+  {
+    name: "moderation_actions",
+    // Two foreign keys to participants: a participant can be the actor of some log
+    // rows and the target of others. A merge must re-point BOTH from the ghost to
+    // the survivor, or the reference left behind would be dropped when the ghost
+    // is deleted (the cascade) and would also trip the guard. There is no combine:
+    // each row is an individual, immutable log entry, and re-pointing a
+    // participant reference collides with nothing (no unique constraint on these
+    // columns), so the relocation is a straight update of each column where it
+    // equals the ghost. A row where the ghost is both actor and target has both
+    // columns moved to the survivor by the two updates.
+    participantColumns: ["actor_participant_id", "target_participant_id"],
+    async relocate(tx, fromParticipantId, toParticipantId) {
+      await tx
+        .update(moderationActions)
+        .set({ actorParticipantId: toParticipantId })
+        .where(eq(moderationActions.actorParticipantId, fromParticipantId));
+      await tx
+        .update(moderationActions)
+        .set({ targetParticipantId: toParticipantId })
+        .where(eq(moderationActions.targetParticipantId, fromParticipantId));
+    },
+    async countOwned(tx, participantId) {
+      const rows = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(moderationActions)
+        .where(
+          or(
+            eq(moderationActions.actorParticipantId, participantId),
+            eq(moderationActions.targetParticipantId, participantId),
+          ),
+        );
       return rows[0]?.count ?? 0;
     },
   },
