@@ -1,12 +1,15 @@
 import { sql } from "drizzle-orm";
-import { index, integer, pgTable, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, pgTable, timestamp, unique, uuid } from "drizzle-orm/pg-core";
 import { communities } from "./communities.js";
 import { participants } from "./participants.js";
 
-// The join between a participant and a community. Defined now as foundational
-// schema; the membership lifecycle (join, leave, roles) is phase 4, so this
-// table is intentionally unpopulated in this phase. permission_level is a coarse
-// per-community role rank, refined when the lifecycle lands.
+// The join between a participant and a community. The membership lifecycle
+// (phase 4a) gives this table its write path: ensure-membership and leave.
+// permission_level is a coarse per-community role rank, defaulted to 0 here and
+// interpreted by moderation (phase 4c). active is the soft-leave flag: true means
+// a current member, false means they have left; the row is preserved across a
+// leave so a later rejoin reactivates it (keeping created_at and permission_level).
+// left_at records when the membership last went inactive and is null while active.
 export const communityMembers = pgTable(
   "community_members",
   {
@@ -18,6 +21,8 @@ export const communityMembers = pgTable(
       .notNull()
       .references(() => participants.id, { onDelete: "cascade" }),
     permissionLevel: integer("permission_level").notNull().default(0),
+    active: boolean("active").notNull().default(true),
+    leftAt: timestamp("left_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
