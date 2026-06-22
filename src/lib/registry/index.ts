@@ -6,6 +6,7 @@
 // onto registry ids; integrity is enforced at the application layer, so there is
 // nothing to seed. This mirrors noclulabs.com.
 //
-// The platform registry is the first entry. The signal-type registry arrives
-// with the bridge phase.
+// The platform registry is the first entry, the moderation action registry the
+// second. The signal-type registry arrives with the bridge phase.
 export * from "./platforms.js";
+export * from "./moderation-actions.js";

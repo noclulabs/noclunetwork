@@ -181,6 +181,51 @@ export interface LeaveMembershipResult {
   membership: MembershipView | null;
 }
 
+// Soft-leave a single membership inside the caller's transaction: mark an active
+// membership inactive (active false, left_at now). The row is locked FOR UPDATE so
+// a concurrent ensure or leave of the same membership serializes behind this one.
+// No membership row, or an already-inactive one, is an idempotent no-op (left
+// false). This is the one shared soft-leave: the leave route resolves the ids
+// without creating and calls it, and a moderation kick or ban (phase 4c) calls it
+// inside its own action transaction on an already-resolved (community,
+// participant), so the log row and the deactivation commit atomically.
+export async function deactivateMembershipRow(
+  tx: DbTransaction,
+  communityId: string,
+  participantId: string,
+): Promise<LeaveMembershipResult> {
+  const existing = (
+    await tx
+      .select()
+      .from(communityMembers)
+      .where(
+        and(
+          eq(communityMembers.communityId, communityId),
+          eq(communityMembers.participantId, participantId),
+        ),
+      )
+      .for("update")
+      .limit(1)
+  )[0];
+
+  if (existing === undefined) {
+    return { left: false, membership: null };
+  }
+  if (!existing.active) {
+    return { left: false, membership: shapeMembership(existing) };
+  }
+
+  const updated = requireRow(
+    await tx
+      .update(communityMembers)
+      .set({ active: false, leftAt: sql`now()` })
+      .where(eq(communityMembers.id, existing.id))
+      .returning(),
+    "leave community_members",
+  );
+  return { left: true, membership: shapeMembership(updated) };
+}
+
 // Leave a community: mark the membership inactive (active false, left_at now).
 // The participant and the community are resolved WITHOUT creating them, because
 // leaving something that was never joined is an idempotent no-op success, not an
@@ -224,36 +269,7 @@ export async function leaveMembership(
     return { left: false, membership: null };
   }
 
-  return db.transaction(async (tx) => {
-    const existing = (
-      await tx
-        .select()
-        .from(communityMembers)
-        .where(
-          and(
-            eq(communityMembers.communityId, communityPlatform.communityId),
-            eq(communityMembers.participantId, account.participantId),
-          ),
-        )
-        .for("update")
-        .limit(1)
-    )[0];
-
-    if (existing === undefined) {
-      return { left: false, membership: null };
-    }
-    if (!existing.active) {
-      return { left: false, membership: shapeMembership(existing) };
-    }
-
-    const updated = requireRow(
-      await tx
-        .update(communityMembers)
-        .set({ active: false, leftAt: sql`now()` })
-        .where(eq(communityMembers.id, existing.id))
-        .returning(),
-      "leave community_members",
-    );
-    return { left: true, membership: shapeMembership(updated) };
-  });
+  return db.transaction((tx) =>
+    deactivateMembershipRow(tx, communityPlatform.communityId, account.participantId),
+  );
 }
