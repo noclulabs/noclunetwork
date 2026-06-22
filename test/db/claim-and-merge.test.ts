@@ -193,6 +193,38 @@ describe("POST /api/v1/participants/claim", () => {
     expect(claimed?.verified).toBe(true);
   });
 
+  // Merge folds the ghost's lifetime XP into the survivor.
+  it("sums the ghost's network_xp into the survivor on merge", async () => {
+    const identity = randomUUID();
+    const survivorClaim = await claim({
+      platform: "discord",
+      platformUserId: "s-xp",
+      noclulabsIdentityId: identity,
+    });
+    const survivorId = survivorClaim.json().data.participant.id as string;
+
+    const ghostResolve = await resolve({ platform: "discord", platformUserId: "p-xp" });
+    const ghostId = ghostResolve.json().data.participant.id as string;
+
+    // Both carry lifetime network XP before the merge.
+    await getDb().update(participants).set({ networkXp: 100 }).where(eq(participants.id, survivorId));
+    await getDb().update(participants).set({ networkXp: 250 }).where(eq(participants.id, ghostId));
+
+    const response = await claim({
+      platform: "discord",
+      platformUserId: "p-xp",
+      noclulabsIdentityId: identity,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.outcome).toBe("merged");
+    expect(response.json().data.participant.id).toBe(survivorId);
+
+    // The survivor's lifetime total is the sum of both; the ghost is gone.
+    expect((await participantById(survivorId))?.networkXp).toBe(350);
+    expect(await participantById(ghostId)).toBeUndefined();
+    expect(await countParticipants()).toBe(1);
+  });
+
   // Case 1 precondition: resolve-or-create on claim.
   it("resolve-or-creates the account on a claim for a never-seen platform user, then claims in place", async () => {
     const identity = randomUUID();

@@ -19,9 +19,10 @@ const leaveBody = z.object({
   platformGroupId: z.string().min(1),
 });
 
-// The membership view shared by both responses. The platform enums in the request
-// schemas are projected from the registry, so the OpenAPI spec cannot drift.
-const membershipSchema = {
+// The membership view shared by both responses (and reused by the engagement
+// route), so the OpenAPI membership shape is single-sourced. The platform enums in
+// the request schemas are projected from the registry, so the spec cannot drift.
+export const membershipSchema = {
   type: "object",
   required: ["id", "communityId", "participantId", "active", "permissionLevel", "createdAt", "leftAt"],
   properties: {
