@@ -75,11 +75,14 @@ src/
   plugins/                  # Fastify plugins (service auth, error handler, swagger)
   routes/
     health.ts               # liveness probe (rate-limit exempt)
-    participants.ts         # POST /api/v1/participants/resolve
+    participants.ts         # POST /api/v1/participants/resolve and /claim
     communities.ts          # POST /api/v1/communities/resolve
     parse.ts                # Zod body parse into a 400 ApiError
   services/
-    participants/resolve.ts # resolve-or-create a participant
+    participants/
+      resolve.ts            # resolve-or-create a participant
+      claim.ts              # verification-driven claim-and-merge
+      owned-relations.ts    # participant-owned relations (merge relocation and the USER_HAS_DATA guard)
     communities/resolve.ts  # resolve-or-create a community
   lib/
     db/

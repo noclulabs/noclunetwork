@@ -7,10 +7,14 @@ services:
       POSTGRES_PASSWORD: noclu
       POSTGRES_DB: noclunetwork
     ports:
-      # Host port 5433 to avoid clashing with a local Postgres on 5432.
-      - "5433:5432"
+      # Host port 5439 to avoid clashing with other local Postgres instances
+      # (5432 default, 5433 noclulabs.com dev). The container port stays 5432.
+      - "5439:5432"
     volumes:
-      - noclunetwork_pgdata:/var/lib/postgresql/data
+      # Postgres 18 stores data under a major-version subdirectory, so the volume
+      # mounts at /var/lib/postgresql, not /var/lib/postgresql/data (the 18+ image
+      # rejects a mount at the old data path). See docker-library/postgres#1259.
+      - noclunetwork_pgdata:/var/lib/postgresql
 
   redis:
     image: redis:7
