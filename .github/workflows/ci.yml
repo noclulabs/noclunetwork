@@ -18,7 +18,7 @@ jobs:
           POSTGRES_PASSWORD: noclu
           POSTGRES_DB: noclunetwork_test
         ports:
-          - 5433:5432
+          - 5439:5432
         options: >-
           --health-cmd "pg_isready -U noclu"
           --health-interval 10s
@@ -36,7 +36,7 @@ jobs:
 
     env:
       NODE_ENV: test
-      DATABASE_URL: postgres://noclu:noclu@localhost:5433/noclunetwork_test?uselibpqcompat=true
+      DATABASE_URL: postgres://noclu:noclu@localhost:5439/noclunetwork_test?uselibpqcompat=true
       REDIS_URL: redis://localhost:6379
       # vitest.config pins SERVICE_TOKEN for the test run, so this value is a
       # placeholder kept for parity with the app's runtime environment.

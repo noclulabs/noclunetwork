@@ -36,7 +36,7 @@ describe("getConfig production DATABASE_URL guard", () => {
   it("does not require the suffix outside production", async () => {
     vi.resetModules();
     vi.stubEnv("NODE_ENV", "development");
-    vi.stubEnv("DATABASE_URL", "postgres://noclu:noclu@localhost:5433/noclunetwork");
+    vi.stubEnv("DATABASE_URL", "postgres://noclu:noclu@localhost:5439/noclunetwork");
 
     const { getConfig } = await import("@/config.js");
     expect(() => getConfig()).not.toThrow();
