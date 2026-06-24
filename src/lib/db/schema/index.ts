@@ -7,3 +7,4 @@ export * from "./communities.js";
 export * from "./community-platforms.js";
 export * from "./community-members.js";
 export * from "./moderation-actions.js";
+export * from "./sync-watermarks.js";

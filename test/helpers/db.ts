@@ -12,7 +12,8 @@ export async function resetDb(): Promise<void> {
       communities,
       community_platforms,
       community_members,
-      moderation_actions
+      moderation_actions,
+      sync_watermarks
       restart identity cascade`,
   );
 }
