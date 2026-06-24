@@ -72,7 +72,7 @@ src/
   index.ts                  # runtime entry point (invokes start)
   server.ts                 # Fastify app factory, the /api/v1 mount, and the start routine
   config.ts                 # Zod-validated config (with the production DATABASE_URL guard)
-  plugins/                  # Fastify plugins (service auth, error handler, swagger)
+  plugins/                  # Fastify plugins (service auth, error handler, swagger, verify-sync scheduler)
   routes/
     health.ts               # liveness probe (rate-limit exempt)
     participants.ts         # POST /api/v1/participants/resolve and /claim
@@ -92,6 +92,10 @@ src/
     moderation/
       actions.ts            # record a moderation action and apply its membership effect
       sanction-state.ts     # the derived-at-read sanction state and the two reads
+    verify-sync/            # the inbound verify poller: reads surface B, drives the claim, durable watermark
+      poller.ts             # the factory: runIncrementalCycle and runFullRescan (gap-closure)
+      watermark.ts          # the Postgres-backed watermark store
+      streams.ts            # the stream-key and provider constants
   lib/
     db/
       index.ts              # the pg pool and the Drizzle connection
@@ -99,11 +103,12 @@ src/
       schema/               # one file per table, re-exported from index.ts
     leveling/               # the polynomial XP-to-level curve and the capped contribution (pure)
     redis/                  # ioredis client on the single ncn: namespace (the engagement cooldown)
+    noclulabs/              # the noclulabs.com integration boundary (authed client, verified-connections port)
     registry/
       platforms.ts          # the platform registry (canonical valid platforms)
       moderation-actions.ts # the moderation action registry (canonical valid actions)
   types/                    # shared types and the response envelope
-drizzle/migrations/         # append-only migrations (0000 foundational, 0001 membership active and left_at, 0002 participant network_xp, 0003 the moderation_actions table)
+drizzle/migrations/         # append-only migrations (0000 foundational, 0001 membership active and left_at, 0002 participant network_xp, 0003 the moderation_actions table, 0004 the sync_watermarks table)
 test/
   constants.ts              # shared test env defaults (database, Redis, service token)
   global-setup.ts           # creates the test database and applies migrations once
@@ -115,11 +120,31 @@ test/
   db/owned-relations-catalog.test.ts # asserts every participant_id foreign-key table is registered
   db/engagement.test.ts     # engagement grant, the per-community cooldown, cross-community, concurrency
   db/moderation.test.ts     # moderation actions and effects, derived sanction state, the reads, the two-key merge
+  db/verify-sync.test.ts    # the poller against a fake surface B: cycle, pagination, gap-closure, failure-no-advance
+  verify-sync-config.test.ts # the verify-sync config additions, the enable refine, and the scheduler gate
   leveling.test.ts          # the pure curve and contribution functions (unit, no DB)
 Dockerfile
 docker-compose.yml
 docker-compose.dev.yml
 ```
+
+## The bridge: verify-sync poller
+
+noCluNetwork is the bidirectional bridge between platform bots and noCluID. The first realized piece of that bridge on this side is the verify-sync poller: a background poller that reads verified Discord connections from noclulabs.com (surface B of the bridge contract) and drives the existing participant claim for each one, linking ghost participants to their noCluID. It depends on a typed client interface, so the test suite runs fully offline against synthetic connections; live operation is pending the Discord OAuth app and the shared service token.
+
+The poller ships inert. It is registered in the app but does nothing until enabled, so merging it changes nothing in production. Enable it by setting the environment variables below (config load fails fast if the poller is enabled without the noclulabs.com base URL and token):
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `VERIFY_SYNC_ENABLED` | `false` | The primary gate. Accepts only `true` or `false`. While false the scheduler starts no timers and touches neither the database nor the network. |
+| `VERIFY_SYNC_INTERVAL_MS` | `60000` | The fast-path incremental poll cadence. |
+| `VERIFY_SYNC_RESCAN_INTERVAL_MS` | `3600000` | The full re-scan cadence (the gap-closure sweep, slower than the fast path). |
+| `VERIFY_SYNC_PAGE_SIZE` | `200` | The page size requested from surface B (1 to 500; the server clamps to its maximum). |
+| `NOCLULABS_BASE_URL` | (unset) | The noclulabs.com base URL. Required when the poller is enabled; in production the private VPC address. |
+| `NOCLULABS_SERVICE_TOKEN` | (unset) | The trusted credential for calling noclulabs.com. Required when the poller is enabled. Sent as a bearer, never logged. |
+| `NOCLULABS_HTTP_TIMEOUT_MS` | `10000` | The outbound request timeout for every call to noclulabs.com. |
+
+The watermark (how far the poller has consumed each stream) is durable in Postgres (`sync_watermarks`), not Redis; the single `ncn:` Redis namespace stays reserved for the engagement cooldown.
 
 ## Bible files
 

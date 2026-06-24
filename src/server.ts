@@ -5,6 +5,7 @@ import { getConfig } from "@/config.js";
 import { registerErrorHandler } from "@/plugins/error-handler.js";
 import { registerServiceAuth } from "@/plugins/service-auth.js";
 import { registerSwagger } from "@/plugins/swagger.js";
+import { registerVerifySync } from "@/plugins/verify-sync.js";
 import { registerHealthRoute } from "@/routes/health.js";
 import { registerParticipantRoutes } from "@/routes/participants.js";
 import { registerCommunityRoutes } from "@/routes/communities.js";
@@ -72,6 +73,11 @@ export async function buildApp(): Promise<FastifyInstance> {
     },
     { prefix: "/api/v1" },
   );
+
+  // The inbound verify-sync poller. Always registered so enabling is a single
+  // config flip, but inert unless VERIFY_SYNC_ENABLED is true (it self-gates and
+  // starts no timers when disabled, so the test environment never starts it).
+  registerVerifySync(app);
 
   return app;
 }
