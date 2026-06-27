@@ -13,6 +13,7 @@ import { registerCommunityRoutes } from "@/routes/communities.js";
 import { registerMembershipRoutes } from "@/routes/memberships.js";
 import { registerEngagementRoutes } from "@/routes/engagement.js";
 import { registerModerationRoutes } from "@/routes/moderation.js";
+import { registerSummonRoutes } from "@/routes/summon.js";
 import { closeDb } from "@/lib/db/index.js";
 import { closeRedis } from "@/lib/redis/index.js";
 
@@ -71,6 +72,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       registerMembershipRoutes(api);
       registerEngagementRoutes(api);
       registerModerationRoutes(api);
+      registerSummonRoutes(api);
     },
     { prefix: "/api/v1" },
   );
