@@ -19,8 +19,8 @@ const envBoolean = (defaultValue: "true" | "false") =>
 // fail-fast message. DATABASE_URL, REDIS_URL, and SERVICE_TOKEN are required.
 // The noclulabs.com channel credentials are reserved (declared, documented, not
 // required) until the bridge phase, when the verify-sync poller becomes the first
-// real consumer. They become required (the refine below) only when the poller is
-// enabled.
+// real consumer and the emit client the second. They become required (the refines
+// below) only when the poller or the emit client is enabled.
 const configSchema = z
   .object({
     NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -50,6 +50,12 @@ const configSchema = z
     VERIFY_SYNC_RESCAN_INTERVAL_MS: z.coerce.number().int().positive().default(3600000),
     // The page size requested from surface B; the server clamps to its own max (500).
     VERIFY_SYNC_PAGE_SIZE: z.coerce.number().int().min(1).max(500).default(200),
+
+    // The outbound emit client (the bridge emit capability). Inert by default:
+    // with EMIT_SYNC_ENABLED false no emit fires on any triggering event, and
+    // nothing touches noclulabs.com. When true it requires the same base URL and
+    // service token the poller uses (the refine below).
+    EMIT_SYNC_ENABLED: envBoolean("false"),
   })
   // In production the connection to DigitalOcean managed Postgres requires the
   // libpq compatibility suffix. Enforce it here so a misconfigured deploy fails
@@ -76,6 +82,21 @@ const configSchema = z
       path: ["VERIFY_SYNC_ENABLED"],
       message:
         "VERIFY_SYNC_ENABLED is true but NOCLULABS_BASE_URL or NOCLULABS_SERVICE_TOKEN is missing; the poller needs both to call noclulabs.com",
+    },
+  )
+  // The emit client calls noclulabs.com (surface A, the signal intake), so enabling
+  // it without the base URL and service token is a misconfiguration. Same fail-fast
+  // posture as the poller refine above. While the flag is false the URL and token
+  // stay optional and the emit client stays inert.
+  .refine(
+    (config) =>
+      !config.EMIT_SYNC_ENABLED ||
+      ((config.NOCLULABS_BASE_URL?.length ?? 0) > 0 &&
+        (config.NOCLULABS_SERVICE_TOKEN?.length ?? 0) > 0),
+    {
+      path: ["EMIT_SYNC_ENABLED"],
+      message:
+        "EMIT_SYNC_ENABLED is true but NOCLULABS_BASE_URL or NOCLULABS_SERVICE_TOKEN is missing; the emit client needs both to call noclulabs.com",
     },
   );
 

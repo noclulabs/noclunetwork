@@ -3,7 +3,7 @@ import { z } from "zod";
 import { ok } from "@/types/envelope.js";
 import { PLATFORMS, platformSchema } from "@/lib/registry/platforms.js";
 import { resolveParticipant } from "@/services/participants/resolve.js";
-import { claimParticipant } from "@/services/participants/claim.js";
+import { claimAndEmit } from "@/services/emit-sync/claim-and-emit.js";
 import { parseOrThrow } from "./parse.js";
 
 const resolveBody = z.object({
@@ -150,7 +150,10 @@ export function registerParticipantRoutes(app: FastifyInstance): void {
     },
     async (request) => {
       const input = parseOrThrow(claimBody, request.body);
-      const result = await claimParticipant(input);
+      // claimAndEmit performs the claim, then (post-commit, best-effort) emits the
+      // resulting participant's leveling contribution. The single emit trigger
+      // point shared with the verify-sync poller.
+      const result = await claimAndEmit(input);
       return ok(result);
     },
   );
