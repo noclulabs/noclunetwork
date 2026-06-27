@@ -56,6 +56,20 @@ const configSchema = z
     // nothing touches noclulabs.com. When true it requires the same base URL and
     // service token the poller uses (the refine below).
     EMIT_SYNC_ENABLED: envBoolean("false"),
+
+    // The emit reconcile backstop. A scheduled, stateless full pass that re-emits
+    // every claimed participant's current contribution through the same emit
+    // orchestration, so any contribution the on-event path failed to land
+    // eventually lands (the server dedups an unchanged value, so a participant
+    // already current writes nothing). It is meaningless without the on-event emit,
+    // so the scheduler starts only when both EMIT_SYNC_ENABLED and this are true
+    // (see the plugin); inert by default.
+    EMIT_RECONCILE_ENABLED: envBoolean("false"),
+    // The full-pass cadence (default six hours, much slower than the poll).
+    EMIT_RECONCILE_INTERVAL_MS: z.coerce.number().int().positive().default(21600000),
+    // The keyset page size for the pass; the pass never loads all participants at
+    // once. Bounded to a sane range.
+    EMIT_RECONCILE_BATCH_SIZE: z.coerce.number().int().min(1).max(1000).default(200),
   })
   // In production the connection to DigitalOcean managed Postgres requires the
   // libpq compatibility suffix. Enforce it here so a misconfigured deploy fails
@@ -97,6 +111,22 @@ const configSchema = z
       path: ["EMIT_SYNC_ENABLED"],
       message:
         "EMIT_SYNC_ENABLED is true but NOCLULABS_BASE_URL or NOCLULABS_SERVICE_TOKEN is missing; the emit client needs both to call noclulabs.com",
+    },
+  )
+  // The reconcile re-emits through the same emit client, so enabling it without the
+  // base URL and service token is the same misconfiguration. Same fail-fast posture
+  // as the emit and poller refines above. The scheduler also self-gates on
+  // EMIT_SYNC_ENABLED (the plugin), so a reconcile without the on-event emit is
+  // inert, but enabling it still asserts the credentials it would call with.
+  .refine(
+    (config) =>
+      !config.EMIT_RECONCILE_ENABLED ||
+      ((config.NOCLULABS_BASE_URL?.length ?? 0) > 0 &&
+        (config.NOCLULABS_SERVICE_TOKEN?.length ?? 0) > 0),
+    {
+      path: ["EMIT_RECONCILE_ENABLED"],
+      message:
+        "EMIT_RECONCILE_ENABLED is true but NOCLULABS_BASE_URL or NOCLULABS_SERVICE_TOKEN is missing; the reconcile emits through the emit client, which needs both to call noclulabs.com",
     },
   );
 

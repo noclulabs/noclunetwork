@@ -6,6 +6,7 @@ import { registerErrorHandler } from "@/plugins/error-handler.js";
 import { registerServiceAuth } from "@/plugins/service-auth.js";
 import { registerSwagger } from "@/plugins/swagger.js";
 import { registerVerifySync } from "@/plugins/verify-sync.js";
+import { registerEmitReconcile } from "@/plugins/emit-reconcile.js";
 import { registerHealthRoute } from "@/routes/health.js";
 import { registerParticipantRoutes } from "@/routes/participants.js";
 import { registerCommunityRoutes } from "@/routes/communities.js";
@@ -78,6 +79,11 @@ export async function buildApp(): Promise<FastifyInstance> {
   // config flip, but inert unless VERIFY_SYNC_ENABLED is true (it self-gates and
   // starts no timers when disabled, so the test environment never starts it).
   registerVerifySync(app);
+
+  // The outbound emit reconcile backstop. Always registered, but inert unless both
+  // EMIT_SYNC_ENABLED and EMIT_RECONCILE_ENABLED are true (it self-gates and starts
+  // no timer when disabled, so the test environment never starts it).
+  registerEmitReconcile(app);
 
   return app;
 }

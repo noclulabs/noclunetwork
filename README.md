@@ -72,7 +72,7 @@ src/
   index.ts                  # runtime entry point (invokes start)
   server.ts                 # Fastify app factory, the /api/v1 mount, and the start routine
   config.ts                 # Zod-validated config (with the production DATABASE_URL guard)
-  plugins/                  # Fastify plugins (service auth, error handler, swagger, verify-sync scheduler)
+  plugins/                  # Fastify plugins (service auth, error handler, swagger, verify-sync and emit-reconcile schedulers)
   routes/
     health.ts               # liveness probe (rate-limit exempt)
     participants.ts         # POST /api/v1/participants/resolve and /claim
@@ -99,6 +99,7 @@ src/
     emit-sync/              # the outbound emit: push the leveling contribution to surface A (best-effort, post-commit)
       emit.ts               # the orchestration: gate, skip ghost/stale, compute contribution, emit, set the stale marker
       claim-and-emit.ts     # the shared claim-and-emit wrapper (the single emit trigger for claim and merge)
+      reconcile.ts          # the reconcile backstop: a stateless full pass re-emitting every claimed participant
   lib/
     db/
       index.ts              # the pg pool and the Drizzle connection
@@ -127,6 +128,8 @@ test/
   verify-sync-config.test.ts # the verify-sync config additions, the enable refine, and the scheduler gate
   db/emit-sync.test.ts      # the emit triggers against a fake signals client: level-up gate, claim and merge, best-effort, stale marker, gating
   emit-sync-config.test.ts  # the emit config additions and the enable refine
+  db/emit-reconcile.test.ts # the reconcile pass against a fake signals client: re-emit, dedup no-op, pagination, skips, isolation, stale marker, statelessness
+  emit-reconcile-config.test.ts # the reconcile config additions, the enable refine, and the two-flag scheduler gate
   leveling.test.ts          # the pure curve and contribution functions (unit, no DB)
 Dockerfile
 docker-compose.yml
@@ -166,7 +169,21 @@ The emit ships inert, like the poller. Enable it with the flag below (config loa
 | `NOCLULABS_SERVICE_TOKEN` | (unset) | Reused from the poller. Required when the emit is enabled. Sent as a bearer, never logged. |
 | `NOCLULABS_HTTP_TIMEOUT_MS` | `10000` | Reused from the poller. The outbound request timeout for every call to noclulabs.com. |
 
-This session ships the on-event emit only; the optional periodic reconcile backstop is a planned follow-up.
+## The bridge: emit reconcile backstop
+
+The on-event emit can miss in two ways: an emit lost while noclulabs.com was unreachable, and a crash between a committed transaction and its best-effort emit. The reconcile backstop closes both. It is a scheduled, stateless full pass that re-emits every claimed participant's current contribution through the same emit orchestration, so anything the on-event path failed to land eventually lands. It adds no schema (it reuses the `identity_emit_disabled_at` stale-link marker from the 0005 migration) and keeps no watermark: every cycle is a fresh full pass.
+
+A full re-emit is cheap because noclulabs.com conditionally appends: re-emitting a participant who is already current writes nothing and returns `written` false, so a full pass corrects only the contributions that never landed. The pass is keyset-paginated in bounded batches (it never loads all participants at once), best-effort per participant (one participant's emit failure does not stop the pass), and stops a cycle only on a query or database error, which the next interval retries from the beginning.
+
+The reconcile requires the on-event emit: it re-emits through the same orchestration and the same signals client, so the scheduler starts only when both `EMIT_SYNC_ENABLED` and `EMIT_RECONCILE_ENABLED` are true. It ships inert like the emit and the poller, and the suite runs fully offline against the same fake `SignalsClient`; live operation is pending the shared service token and the private base URL.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `EMIT_RECONCILE_ENABLED` | `false` | The gate. Accepts only `true` or `false`. The scheduler starts only when this and `EMIT_SYNC_ENABLED` are both true; while either is false nothing reconciles and nothing touches the network. |
+| `EMIT_RECONCILE_INTERVAL_MS` | `21600000` | The full-pass cadence (six hours), much slower than the poll. |
+| `EMIT_RECONCILE_BATCH_SIZE` | `200` | The keyset page size for the pass (1 to 1000); the pass never loads all participants at once. |
+| `NOCLULABS_BASE_URL` | (unset) | Reused from the poller and the emit. Required when the reconcile is enabled; in production the private VPC address. |
+| `NOCLULABS_SERVICE_TOKEN` | (unset) | Reused from the poller and the emit. Required when the reconcile is enabled. Sent as a bearer, never logged. |
 
 ## Bible files
 
