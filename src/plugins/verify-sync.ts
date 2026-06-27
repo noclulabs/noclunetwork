@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { getConfig } from "@/config.js";
-import { claimParticipant } from "@/services/participants/claim.js";
+import { claimAndEmit } from "@/services/emit-sync/claim-and-emit.js";
 import { verifiedConnectionsClient } from "@/lib/noclulabs/verified-connections.js";
 import { dbWatermarkStore } from "@/services/verify-sync/watermark.js";
 import { createVerifySyncPoller } from "@/services/verify-sync/poller.js";
@@ -31,7 +31,12 @@ export function registerVerifySync(app: FastifyInstance): void {
 
   const poller = createVerifySyncPoller({
     client: verifiedConnectionsClient,
-    claim: claimParticipant,
+    // The poller drives claim-and-emit, not the bare claim: a claim the poller
+    // drives emits the resulting participant's contribution post-commit, just like
+    // a route-driven claim. The emit is best-effort and swallowed inside the
+    // orchestration, so the poller's page-atomic, failure-no-advance behavior is
+    // unchanged (only a claim error can propagate to the poller).
+    claim: claimAndEmit,
     watermarks: dbWatermarkStore,
     logger: app.log,
     provider: DISCORD_PROVIDER,

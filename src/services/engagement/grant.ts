@@ -6,6 +6,7 @@ import { getRedis } from "@/lib/redis/index.js";
 import { levelForXp } from "@/lib/leveling/index.js";
 import type { Platform } from "@/lib/registry/platforms.js";
 import { ensureMembership, type MembershipView } from "@/services/memberships/lifecycle.js";
+import { emitParticipantContribution } from "@/services/emit-sync/emit.js";
 
 // The flat XP granted on a qualifying engagement. A domain-tuning constant kept in
 // one place, not per-deploy configuration.
@@ -121,6 +122,16 @@ export async function recordEngagement(
   const networkLevel = levelForXp(networkXp);
   const previousLevel = levelForXp(networkXp - XP_PER_GRANT);
   const leveledUp = networkLevel > previousLevel;
+
+  // Emit the leveling contribution only when the integer level actually crosses (a
+  // grant that stays within a level emits nothing), honoring moves-at-level-up. The
+  // increment above is already committed (a single auto-committed UPDATE), so this
+  // emit is post-commit and best-effort: emitParticipantContribution never throws,
+  // so a failed emit cannot fail the engagement. A ghost or a stale-marked subject
+  // is skipped inside the orchestration.
+  if (leveledUp) {
+    await emitParticipantContribution(participantId);
+  }
 
   return {
     participant: { id: participantId, networkXp, networkLevel },

@@ -22,10 +22,21 @@ import { bigint, pgTable, timestamp, uuid } from "drizzle-orm/pg-core";
 // below Number.MAX_SAFE_INTEGER (2^53), so a JS number is exact here. Number mode
 // also keeps a plain integer default (0) that drizzle-kit can serialize, where a
 // bigint-literal default cannot be.
+//
+// identity_emit_disabled_at is the stale-link marker for the bridge emit
+// capability (phase 5). Null means emit normally; a timestamp means a prior emit
+// to noclulabs.com surface A returned unknown_subject (the noclulabs.com user was
+// deleted, which the FK cascade on their side has already made permanent), so this
+// subject is a confirmed stale link and the emit orchestration skips it forever.
+// It is distinct from unlinking a platform connection (out of scope), which leaves
+// the user intact; this records only that the noclulabs.com subject no longer
+// exists. Nullable with a null default, so the migration is a safe additive ALTER
+// with no backfill.
 export const participants = pgTable("participants", {
   id: uuid("id").primaryKey().default(sql`uuidv7()`),
   noclulabsIdentityId: uuid("noclulabs_identity_id").unique(),
   networkXp: bigint("network_xp", { mode: "number" }).notNull().default(0),
+  identityEmitDisabledAt: timestamp("identity_emit_disabled_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

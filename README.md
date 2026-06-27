@@ -96,6 +96,9 @@ src/
       poller.ts             # the factory: runIncrementalCycle and runFullRescan (gap-closure)
       watermark.ts          # the Postgres-backed watermark store
       streams.ts            # the stream-key and provider constants
+    emit-sync/              # the outbound emit: push the leveling contribution to surface A (best-effort, post-commit)
+      emit.ts               # the orchestration: gate, skip ghost/stale, compute contribution, emit, set the stale marker
+      claim-and-emit.ts     # the shared claim-and-emit wrapper (the single emit trigger for claim and merge)
   lib/
     db/
       index.ts              # the pg pool and the Drizzle connection
@@ -103,12 +106,12 @@ src/
       schema/               # one file per table, re-exported from index.ts
     leveling/               # the polynomial XP-to-level curve and the capped contribution (pure)
     redis/                  # ioredis client on the single ncn: namespace (the engagement cooldown)
-    noclulabs/              # the noclulabs.com integration boundary (authed client, verified-connections port)
+    noclulabs/              # the noclulabs.com integration boundary (authed client, verified-connections and signals ports)
     registry/
       platforms.ts          # the platform registry (canonical valid platforms)
       moderation-actions.ts # the moderation action registry (canonical valid actions)
   types/                    # shared types and the response envelope
-drizzle/migrations/         # append-only migrations (0000 foundational, 0001 membership active and left_at, 0002 participant network_xp, 0003 the moderation_actions table, 0004 the sync_watermarks table)
+drizzle/migrations/         # append-only migrations (0000 foundational, 0001 membership active and left_at, 0002 participant network_xp, 0003 the moderation_actions table, 0004 the sync_watermarks table, 0005 the participant identity_emit_disabled_at marker)
 test/
   constants.ts              # shared test env defaults (database, Redis, service token)
   global-setup.ts           # creates the test database and applies migrations once
@@ -122,6 +125,8 @@ test/
   db/moderation.test.ts     # moderation actions and effects, derived sanction state, the reads, the two-key merge
   db/verify-sync.test.ts    # the poller against a fake surface B: cycle, pagination, gap-closure, failure-no-advance
   verify-sync-config.test.ts # the verify-sync config additions, the enable refine, and the scheduler gate
+  db/emit-sync.test.ts      # the emit triggers against a fake signals client: level-up gate, claim and merge, best-effort, stale marker, gating
+  emit-sync-config.test.ts  # the emit config additions and the enable refine
   leveling.test.ts          # the pure curve and contribution functions (unit, no DB)
 Dockerfile
 docker-compose.yml
@@ -145,6 +150,23 @@ The poller ships inert. It is registered in the app but does nothing until enabl
 | `NOCLULABS_HTTP_TIMEOUT_MS` | `10000` | The outbound request timeout for every call to noclulabs.com. |
 
 The watermark (how far the poller has consumed each stream) is durable in Postgres (`sync_watermarks`), not Redis; the single `ncn:` Redis namespace stays reserved for the engagement cooldown.
+
+## The bridge: emit client
+
+The outbound half of the bridge is the emit client. When a claimed participant's network level changes, noCluNetwork pushes their capped leveling contribution up to noclulabs.com's signal intake (surface A of the bridge contract, `POST /api/identity/signals`). It is the ledger's first real writer from this side. The value is `min(level, 50) / 50`, the same capped contribution the leveling module derives; the True Score itself is computed on noclulabs.com from the signal ledger, never here.
+
+Three events emit, always after the relevant transaction commits, never inside it: an engagement level-up (only when the integer level actually crosses, not on every XP gain), a claim, and a merge. The emit is best-effort: a failed emit never fails an engagement, a claim, a merge, or a poller cycle. If noclulabs.com reports the subject was deleted (`unknown_subject`), a nullable `identity_emit_disabled_at` marker on the participant (the 0005 migration) permanently stops emitting for that subject; a malformed-request error (`invalid_request`) is treated as a bug to fix and never disables the subject. The emit depends on a typed `SignalsClient` interface, so the test suite runs fully offline against a fake; live operation is pending the shared service token and the private base URL.
+
+The emit ships inert, like the poller. Enable it with the flag below (config load fails fast if it is enabled without the noclulabs.com base URL and token, which it reuses from the poller):
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `EMIT_SYNC_ENABLED` | `false` | The gate. Accepts only `true` or `false`. While false no triggering event emits and nothing touches the network. |
+| `NOCLULABS_BASE_URL` | (unset) | Reused from the poller. Required when the emit is enabled; in production the private VPC address. |
+| `NOCLULABS_SERVICE_TOKEN` | (unset) | Reused from the poller. Required when the emit is enabled. Sent as a bearer, never logged. |
+| `NOCLULABS_HTTP_TIMEOUT_MS` | `10000` | Reused from the poller. The outbound request timeout for every call to noclulabs.com. |
+
+This session ships the on-event emit only; the optional periodic reconcile backstop is a planned follow-up.
 
 ## Bible files
 
