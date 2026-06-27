@@ -70,6 +70,15 @@ const configSchema = z
     // The keyset page size for the pass; the pass never loads all participants at
     // once. Bounded to a sane range.
     EMIT_RECONCILE_BATCH_SIZE: z.coerce.number().int().min(1).max(1000).default(200),
+
+    // The summon read-down endpoint (the bridge read capability). With
+    // SUMMON_ENABLED false the endpoint returns 503 summon_disabled and never calls
+    // noclulabs.com surface C, so merging it changes nothing in production. When true
+    // it requires the same base URL and service token the poller and emit use (the
+    // refine below). This is the inbound endpoint gate; the inbound service token
+    // (SERVICE_TOKEN, a bot calling us) stays separate from the outbound credential
+    // (NOCLULABS_SERVICE_TOKEN, us calling noclulabs.com).
+    SUMMON_ENABLED: envBoolean("false"),
   })
   // In production the connection to DigitalOcean managed Postgres requires the
   // libpq compatibility suffix. Enforce it here so a misconfigured deploy fails
@@ -127,6 +136,21 @@ const configSchema = z
       path: ["EMIT_RECONCILE_ENABLED"],
       message:
         "EMIT_RECONCILE_ENABLED is true but NOCLULABS_BASE_URL or NOCLULABS_SERVICE_TOKEN is missing; the reconcile emits through the emit client, which needs both to call noclulabs.com",
+    },
+  )
+  // The summon endpoint calls noclulabs.com (surface C, the scoped read), so enabling
+  // it without the base URL and service token is a misconfiguration. Same fail-fast
+  // posture as the poller, emit, and reconcile refines above. While the flag is false
+  // the URL and token stay optional and the endpoint stays inert (it returns 503).
+  .refine(
+    (config) =>
+      !config.SUMMON_ENABLED ||
+      ((config.NOCLULABS_BASE_URL?.length ?? 0) > 0 &&
+        (config.NOCLULABS_SERVICE_TOKEN?.length ?? 0) > 0),
+    {
+      path: ["SUMMON_ENABLED"],
+      message:
+        "SUMMON_ENABLED is true but NOCLULABS_BASE_URL or NOCLULABS_SERVICE_TOKEN is missing; the summon endpoint needs both to call noclulabs.com",
     },
   );
 

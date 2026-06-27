@@ -157,6 +157,20 @@ export async function noclulabsGet(path: string, query: QueryParams = {}): Promi
   return body;
 }
 
+// Authed GET that returns the status and parsed body for a 2xx or for any
+// readableStatuses the caller passed, so it can inspect a meaningful non-2xx body
+// (like surface C's 422), and throws a typed NoclulabsClientError for 401, 500, any
+// other non-2xx, or a transport, timeout, or non-JSON failure. Used by the score
+// client (surface C). The plain noclulabsGet above (body-only, throws on any non-2xx)
+// is unchanged, so the verify-sync poller is unaffected. Reuses the same authed core.
+export async function noclulabsGetReadable(
+  path: string,
+  query: QueryParams,
+  readableStatuses?: ReadonlySet<number>,
+): Promise<NoclulabsResponse> {
+  return noclulabsRequest({ method: "GET", path, query, readableStatuses });
+}
+
 // Authed POST against noclulabs.com. Returns the status and parsed body for a 2xx
 // or for any readableStatuses the caller passed (so it can inspect a meaningful
 // non-2xx body, like surface A's 422), and throws a typed NoclulabsClientError for

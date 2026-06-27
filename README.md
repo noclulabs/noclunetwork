@@ -80,7 +80,8 @@ src/
     memberships.ts          # POST /api/v1/memberships/ensure and /leave
     engagement.ts           # POST /api/v1/engagement (accrue network XP)
     moderation.ts           # POST /api/v1/moderation/actions, GET /moderation/state and /history
-    parse.ts                # Zod body parse into a 400 ApiError
+    summon.ts               # POST /api/v1/summon (read an invoking user's noCluID score, read-down)
+    parse.ts                # Zod body parse into an ApiError (400 by default, 422 for summon)
   services/
     participants/
       resolve.ts            # resolve-or-create a participant
@@ -100,6 +101,8 @@ src/
       emit.ts               # the orchestration: gate, skip ghost/stale, compute contribution, emit, set the stale marker
       claim-and-emit.ts     # the shared claim-and-emit wrapper (the single emit trigger for claim and merge)
       reconcile.ts          # the reconcile backstop: a stateless full pass re-emitting every claimed participant
+    summon/                 # the inbound read-down: resolve a user read-only, read surface C, map to an outcome
+      summon.ts             # the service: read-only resolution, the single surface C call, the outcome mapping
   lib/
     db/
       index.ts              # the pg pool and the Drizzle connection
@@ -107,7 +110,7 @@ src/
       schema/               # one file per table, re-exported from index.ts
     leveling/               # the polynomial XP-to-level curve and the capped contribution (pure)
     redis/                  # ioredis client on the single ncn: namespace (the engagement cooldown)
-    noclulabs/              # the noclulabs.com integration boundary (authed client, verified-connections and signals ports)
+    noclulabs/              # the noclulabs.com integration boundary (authed client, verified-connections, signals, and score ports)
     registry/
       platforms.ts          # the platform registry (canonical valid platforms)
       moderation-actions.ts # the moderation action registry (canonical valid actions)
@@ -130,6 +133,9 @@ test/
   emit-sync-config.test.ts  # the emit config additions and the enable refine
   db/emit-reconcile.test.ts # the reconcile pass against a fake signals client: re-emit, dedup no-op, pagination, skips, isolation, stale marker, statelessness
   emit-reconcile-config.test.ts # the reconcile config additions, the enable refine, and the two-flag scheduler gate
+  db/summon.test.ts         # the summon endpoint against a fake score client: claimed, not_linked, subject_gone, error mapping, auth, disabled, validation
+  score-client.test.ts      # the real score client against a spied fetch: the acting-for-subject wire literal, the bearer, the 200/422/401/network parses
+  summon-config.test.ts     # the summon config addition, the enable refine, and the boolean validation
   leveling.test.ts          # the pure curve and contribution functions (unit, no DB)
 Dockerfile
 docker-compose.yml
@@ -184,6 +190,29 @@ The reconcile requires the on-event emit: it re-emits through the same orchestra
 | `EMIT_RECONCILE_BATCH_SIZE` | `200` | The keyset page size for the pass (1 to 1000); the pass never loads all participants at once. |
 | `NOCLULABS_BASE_URL` | (unset) | Reused from the poller and the emit. Required when the reconcile is enabled; in production the private VPC address. |
 | `NOCLULABS_SERVICE_TOKEN` | (unset) | Reused from the poller and the emit. Required when the reconcile is enabled. Sent as a bearer, never logged. |
+
+## The bridge: summon endpoint
+
+The read-down half of the bridge is the summon endpoint, the last of the three noCluNetwork-side bridge capabilities. A user verifies a platform once, and that platform's bot becomes a window onto their noCluID. `POST /api/v1/summon` resolves an invoking platform user to their claimed participant, read-only (never creating a participant), and reads that subject's noCluID score from noclulabs.com (surface C of the bridge contract, `GET /api/identity/score`), returning the true score and the public score for the bot to present. The score-read client depends on a typed `ScoreClient` interface, so the test suite runs fully offline; live operation is pending the shared service token and the private base URL.
+
+The request body is `{ platform, platformUserId }`. The response is the standard envelope. A defined business outcome is a 200 carrying a `data.outcome` discriminator:
+
+- `ok`: `data` carries `subject`, `trueScore`, and `publicScore` (each a `{ total, breakdown }`). The true score and the public score both come from the single surface C call.
+- `not_linked`: the invoking user has no platform account, or is an unclaimed ghost (no noCluID identity). The two sub-cases are unified.
+- `subject_gone`: the noclulabs.com identity was deleted (surface C reported `unknown_subject`).
+
+Infrastructure and upstream failures are non-200 so they surface loudly: 500 (`internal`) for our own bad request to surface C or an unexpected error, 502 (`upstream_error`) for a surface C 401, 500, timeout, or network failure, 503 (`summon_disabled`) when the feature flag is off, and 422 for a malformed body.
+
+Two credentials, kept distinct: the endpoint is gated inbound by the service-auth plugin (a bot presents `X-Service-Token` plus `X-Service-Name` to call noCluNetwork); noCluNetwork then presents the separate outbound credential (`NOCLULABS_SERVICE_TOKEN`, a bearer) to call surface C. A missing or bad inbound service token is a 401, always required and independent of the feature flag.
+
+Presentation is noCluBot's job: the Discord bot command and its private (ephemeral or DM) delivery of the owner-only true score live in noCluBot (a future repo). This endpoint is the unit noCluBot calls. The summon ships inert: with `SUMMON_ENABLED` false the endpoint returns 503 and never calls surface C, so merging it changes nothing in production.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `SUMMON_ENABLED` | `false` | The endpoint gate. Accepts only `true` or `false`. While false the endpoint returns 503 `summon_disabled` and never calls surface C. |
+| `NOCLULABS_BASE_URL` | (unset) | Reused from the poller and the emit. Required when the summon is enabled; in production the private VPC address. |
+| `NOCLULABS_SERVICE_TOKEN` | (unset) | Reused from the poller and the emit. The outbound credential, distinct from the inbound `SERVICE_TOKEN`. Required when the summon is enabled. Sent as a bearer, never logged. |
+| `NOCLULABS_HTTP_TIMEOUT_MS` | `10000` | Reused from the poller and the emit. The outbound request timeout for every call to noclulabs.com. |
 
 ## Bible files
 
