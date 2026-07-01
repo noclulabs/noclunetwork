@@ -5,17 +5,26 @@ services:
       dockerfile: Dockerfile
     image: noclunetwork:latest
     restart: unless-stopped
-    ports:
-      # Host port 3000, fronted by Caddy on the shared droplet.
-      - "3000:3000"
-    environment:
-      NODE_ENV: production
-      HOST: 0.0.0.0
-      PORT: 3000
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-      CORS_ORIGIN: ${CORS_ORIGIN:-*}
-      DATABASE_URL: ${DATABASE_URL}
-      REDIS_URL: ${REDIS_URL}
-      SERVICE_TOKEN: ${SERVICE_TOKEN}
-      NOCLULABS_BASE_URL: ${NOCLULABS_BASE_URL:-}
-      NOCLULABS_SERVICE_TOKEN: ${NOCLULABS_SERVICE_TOKEN:-}
+    env_file: .env
+    depends_on:
+      - redis
+    networks:
+      - default
+      - noclulabscom
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    volumes:
+      - noclunetwork_redisdata:/data
+    networks:
+      - default
+
+networks:
+  default:
+  noclulabscom:
+    external: true
+    name: noclulabscom_default
+
+volumes:
+  noclunetwork_redisdata:
