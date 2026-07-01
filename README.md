@@ -26,7 +26,7 @@ It is a relying party of noclulabs.com, the noClu estate's auth issuer and ident
 - Redis via ioredis (cache, pub/sub, BullMQ)
 - Zod (validation), Pino (logging), Vitest (testing)
 - pnpm (package manager)
-- Docker on a DigitalOcean droplet behind Caddy
+- Docker on the shared DigitalOcean droplet (co-located with noclulabs.com in the noCluHub VPC)
 - GitHub Actions (CI and CD)
 
 ## Getting started
@@ -229,7 +229,9 @@ Per-feature playbooks are added as subsystems grow.
 
 ## Deployment
 
-Runs in Docker on the shared noClu DigitalOcean droplet behind Caddy, which terminates TLS and reverse-proxies each suite container (noCluNetwork on host port 3000, noclulabs.com on 3001, noCluCal on 3002). Bots authenticate to the API with a service token. noCluNetwork authenticates to noclulabs.com with a separate trusted credential for the intake and read contracts. Platform tokens live only in noCluBot.
+noCluNetwork is deployed to production, running in Docker on the shared noClu DigitalOcean droplet, co-located with noclulabs.com in the noCluHub VPC. As of 2026-06-30 the phase 5 bridge is live and verified in both directions (verify, emit, and reconcile enabled; summon disabled pending noCluBot). There is no public route today: every bridge call is outbound over the private Docker network, and the one inbound endpoint (summon) stays disabled and unexposed until noCluBot needs it. A Caddy-fronted public surface on host port 3000 (the TLS-terminating reverse proxy that also fronts noclulabs.com and noCluCal) is the intended future shape, not the current deployed one. Bots authenticate to the API with a service token. noCluNetwork authenticates to noclulabs.com with a separate trusted credential for the intake and read contracts. Platform tokens live only in noCluBot.
+
+See DEPLOYMENT.md for the production deployment procedure and the go-live runbook.
 
 ## License
 
