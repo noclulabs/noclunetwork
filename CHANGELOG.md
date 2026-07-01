@@ -87,6 +87,7 @@ All notable changes to noCluNetwork are recorded here, in Keep a Changelog forma
 
 ### Fixed
 
+- The committed `docker-compose.yml` was aligned with the deployed configuration: the published host port was removed, a dedicated `redis` service was added, the external `noclulabscom_default` network was joined, and configuration is now loaded via `env_file`. The repository's compose file matches production rather than the earlier single-service, Caddy-fronted intent. The alignment was made in PR #13, which merged without its own changelog entry; this entry records it to satisfy the every-PR-gets-an-entry discipline.
 - The BigInt-to-Number preSerialization hook recursed into every object, which flattened Date values (for example a row's created_at) to `{}` and broke date-time serialization. It now recurses into plain objects and arrays only, leaving Date and other class instances intact. The bug was latent in the bootstrap (the health route returns no dates) and surfaced with the first timestamp-returning routes.
 
 [Unreleased]: https://github.com/noclulabs/noclunetwork/commits/main

@@ -27,7 +27,6 @@ Optional later engagement-core extensions (deferred, not committed, reopened onl
 
 Post-deployment items surfaced by the go-live and recorded in DEPLOYMENT.md. None blocks live operation.
 
-- The committed `docker-compose.yml` diverges from the deployed shape (no published host port, a dedicated `redis` service, the `noclulabscom_default` external network) and is to be reconciled with production as a separate change.
 - The calendar-semver tagging pass for the merged work is pending (the repository is untagged and `package.json` is at 0.0.0).
 - The migration mechanics and the managed-Postgres privilege grants are noted in DEPLOYMENT.md as things to harden (a dedicated migration image or entrypoint, and codifying the three `doadmin` grants into a deploy script).
 
