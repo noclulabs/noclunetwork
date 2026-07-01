@@ -36,7 +36,7 @@ The bridge is authenticated by one shared secret that has a different variable n
 
 ### A note on the committed compose file
 
-The deployed shape above (no published host port, a dedicated `redis` service, and the `noclulabscom_default` external network) was applied operationally and is not what the committed `docker-compose.yml` in the repository currently expresses. The committed `docker-compose.yml` publishes host port `3000:3000`, defines no `redis` service, and references no external network; it reflects the earlier single-service, Caddy-fronted intent. Treat the topology described in this document as the production reality and do not assume the committed compose file is the production compose. Reconciling the committed compose with the deployed shape is a known follow-up (see below).
+The committed `docker-compose.yml` in the repository matches the deployed configuration described above (no published host port, a dedicated `redis` service, the `noclulabscom_default` external network, and configuration loaded through `env_file`), so the repository and the running configuration agree. The two diverged during the initial bring-up, when the deployed shape was applied operationally while the committed file still expressed the earlier single-service, Caddy-fronted intent (a published `3000:3000` host port, no `redis` service, and no external network). That divergence was reconciled in PR #13 (2026-07-01), so the committed compose now expresses the production topology.
 
 ## Database
 
@@ -103,7 +103,11 @@ This mounted ad hoc install is a stopgap, not a hardened mechanism. It should be
 
 ## Configuration
 
-The authoritative list of environment variables and their meanings is `.env.example`. The production values are supplied to the `api` service through the Compose environment and an `.env` file on the droplet; never commit real values. Two configuration facts matter most for a correct and secure deploy.
+The authoritative list of environment variables and their meanings is `.env.example`. The production values are supplied to the `api` service through the Compose environment and an `.env` file on the droplet; never commit real values.
+
+One value differs between production and local development: in production `REDIS_URL` must be `redis://redis:6379` (the `redis` Compose service name, reached from inside the `api` container over the default Compose network), not the `redis://localhost:6379` that `.env.example` shows as the local-development value. Do not copy the example value blindly into a production deploy.
+
+Two configuration facts matter most for a correct and secure deploy.
 
 ### The credential split
 
@@ -194,4 +198,3 @@ Recorded here so they are not lost. None of these blocks the current live operat
 - The migration mechanics should be hardened: a dedicated migration image or build stage that retains drizzle-kit, or a migration entrypoint, instead of the mounted ad hoc install described above.
 - The database privilege grants should be codified into a deploy script, so a future environment does not require the three `doadmin` grants to be run by hand.
 - The negative-test guards are pending a full run to close verification: a bad inbound token, an unknown subject, a malformed acting-for-subject value, and the privacy default that omits the true score for a non-owner. Running these confirms the failure and privacy paths, not just the happy path.
-- The committed `docker-compose.yml` should be reconciled with the deployed shape (no published host port, a dedicated `redis` service, and the `noclulabscom_default` external network), so that the repository's compose file matches production rather than the earlier single-service intent.
