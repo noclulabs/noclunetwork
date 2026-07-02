@@ -35,7 +35,7 @@ Repo-per-product is the rule. Each repo is born under the noclulabs org with its
 
 ## Bible files (canonical set)
 
-Four bible files in the repo root are the source of truth for project state and the continuity mechanism between sessions. Claude Code reads CLAUDE.md, README.md, and ROADMAP.md in full at the start of every session, plus the `[Unreleased]` section of CHANGELOG.md (not its full released history; consult that on demand). Per-feature playbooks are added as subsystems grow and are read when the work touches that area.
+Four bible files in the repo root are the source of truth for project state and the continuity mechanism between sessions, joined by two continuity files: RAMPUP.md (the stable architect entry point and pointer manifest) and HANDOFF.md (the volatile session baton, rewritten in full every session; see the HANDOFF.md Discipline section below). The executor ramp-up reading list is five files: Claude Code reads CLAUDE.md, README.md, ROADMAP.md, and HANDOFF.md in full at the start of every session, plus the `[Unreleased]` section of CHANGELOG.md (not its full released history; consult that on demand). Per-feature playbooks are added as subsystems grow and are read when the work touches that area.
 
 | File | When updated | Owns |
 |------|-------------|------|
@@ -43,10 +43,22 @@ Four bible files in the repo root are the source of truth for project state and 
 | CHANGELOG.md | Every PR, no exceptions | Change history in Keep a Changelog format under [Unreleased] with Added, Changed, Fixed, Removed, plus the tagged release history |
 | ROADMAP.md | Per-PR when phase status changes, an arc is fleshed out, or a deferred item is logged or resolved | Phase plan, the rebuild arc, north stars, deferred items |
 | README.md | When user-facing capability, setup, or the stack change | Public-facing overview, setup, project structure, deployment notes |
+| RAMPUP.md | Rarely; only when a prompt explicitly instructs it | The stable architect entry point: the pointer manifest, the ramp procedures, the process rules |
+| HANDOFF.md | Every session, rewritten in full before the PR opens | The volatile session baton: last shipped, current state, next up, open questions, temporary warnings |
 
 CLAUDE.md holds invariants and pointers, not narrative (that is CHANGELOG) and not deep per-feature mechanics (those go in playbooks as they are added). Instruction-following degrades as the file grows, so 40k characters is the soft ceiling every PR that touches the file must leave it under. When an addition would breach the ceiling or add narrative or deep mechanics, relocate (history to CHANGELOG, mechanics to a playbook) rather than grow the file.
 
 Every executor prompt begins by reading the bibles and ends with a "Bible file updates (REQUIRED)" section naming the files and the edits. A PR that ships work without a CHANGELOG entry is drift the next session must fix. If a session finds drift or bloat, it surfaces it at the start and proposes an in-place fix (small) or a dedicated reclamation PR (large).
+
+## HANDOFF.md Discipline
+
+HANDOFF.md is the volatile session baton for architect continuity. Rules for every session:
+
+1. The ramp-up reading list is five files: CLAUDE.md, README.md, ROADMAP.md, CHANGELOG.md, HANDOFF.md.
+2. Before opening your PR, rewrite HANDOFF.md in full to reflect the state after your work. Overwrite the whole file. Never append.
+3. Hard cap 4,000 characters. Verify with wc -c HANDOFF.md. If it does not fit, trim it. Roadmap detail belongs in ROADMAP.md, history belongs in CHANGELOG.md.
+4. Rewriting HANDOFF.md is part of the definition of done for every session, the same as CHANGELOG.md updates. Skipping it is drift.
+5. RAMPUP.md is stable. Do not modify RAMPUP.md unless your prompt explicitly instructs it.
 
 ## Tech stack
 
